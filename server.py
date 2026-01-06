@@ -3,32 +3,49 @@ import uuid
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from transcribe_new import transcribe_audio
 
+# =========================
+# CONFIG
+# =========================
 API_KEY = os.getenv("STT_API_KEY")
 
-app = FastAPI()
+if API_KEY is None:
+    raise RuntimeError("STT_API_KEY environment variable not set")
 
+app = FastAPI(
+    title="AI4Bharat STT API",
+    description="Speech-to-Text API using AI4Bharat IndicConformer",
+    version="1.0"
+)
+
+# =========================
+# STT ENDPOINT
+# =========================
 @app.post("/stt")
 async def stt(
     file: UploadFile = File(...),
     authorization: str = Header(None)
 ):
-    if API_KEY is None:
-        raise HTTPException(500, "STT_API_KEY not set")
-
+    # --- Auth check ---
     if authorization != f"Bearer {API_KEY}":
-        raise HTTPException(401, "Invalid API key")
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
+    # --- Save uploaded audio temporarily ---
     temp_path = f"/tmp/{uuid.uuid4()}_{file.filename}"
 
-    with open(temp_path, "wb") as f:
-        f.write(await file.read())
+    try:
+        with open(temp_path, "wb") as f:
+            f.write(await file.read())
 
-    text, latency_ms = transcribe_audio(temp_path)
+        # --- Call inference function (NO script execution) ---
+        text, latency_ms = transcribe_audio(temp_path)
 
-    os.remove(temp_path)
+        return {
+            "filename": file.filename,
+            "text": text,
+            "latency_ms": latency_ms
+        }
 
-    return {
-        "filename": file.filename,
-        "text": text,
-        "latency_ms": latency_ms
-    }
+    finally:
+        # --- Cleanup ---
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
