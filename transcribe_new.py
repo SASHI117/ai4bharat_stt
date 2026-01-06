@@ -1,84 +1,53 @@
-import os
 import time
-import requests
-
-API_URL = "http://74.225.216.132:8000/stt"
-API_KEY = "ai4bharat-secret-key-6262"
-
-HEADERS = {
-    "Authorization": f"Bearer {API_KEY}"
-}
-
-SUPPORTED_EXT = (".wav", ".mp3", ".m4a", ".flac", ".ogg")
-
-
-def send_audio(audio_path):
-    with open(audio_path, "rb") as f:
-        files = {"file": f}
-
-        start = time.time()
-        response = requests.post(
-            API_URL,
-            headers=HEADERS,
-            files=files,
-            timeout=120
-        )
-        end = time.time()
-
-    latency_ms = round((end - start) * 1000, 2)
-
-    if response.status_code != 200:
-        print(f"❌ Error for {audio_path}")
-        print(response.text)
-        return
-
-    result = response.json()
-
-    print("\n📄 File:", os.path.basename(audio_path))
-    print("📝 Transcription:")
-    print(result.get("text") or result.get("transcription"))
-    print("⏱ Latency:", latency_ms, "ms")
-
+import torch
+import torchaudio
+from transformers import AutoModel
 
 # =========================
-# MAIN CLI
+# CONFIG
 # =========================
+MODEL_ID = "ai4bharat/indic-conformer-600m-multilingual"
+LANG = "te"            # Telugu
+DECODE_TYPE = "rnnt"   # rnnt or ctc
+TARGET_SR = 16000
 
-print("\nChoose input type:")
-print("1️⃣  Single audio file")
-print("2️⃣  Folder with multiple audio files")
+# =========================
+# LOAD MODEL (ONCE)
+# =========================
+print("🚀 Loading AI4Bharat model...")
+model = AutoModel.from_pretrained(
+    MODEL_ID,
+    trust_remote_code=True
+)
+model.eval()
+print("✅ Model loaded successfully")
 
-choice = input("\nEnter choice (1 or 2): ").strip()
+# =========================
+# TRANSCRIPTION FUNCTION
+# =========================
+def transcribe_audio(audio_path: str):
+    """
+    Transcribe a single audio file.
+    This function is API-safe (no input(), no prints).
+    """
 
-# -------- SINGLE FILE --------
-if choice == "1":
-    file_path = input("\nEnter audio file path: ").strip('"')
+    start_time = time.time()
 
-    if not os.path.isfile(file_path):
-        print("❌ File not found!")
-    else:
-        send_audio(file_path)
+    # Load audio
+    wav, sr = torchaudio.load(audio_path)
 
-# -------- MULTIPLE FILES --------
-elif choice == "2":
-    folder_path = input("\nEnter folder path: ").strip('"')
+    # Convert to mono
+    if wav.shape[0] > 1:
+        wav = wav.mean(dim=0, keepdim=True)
 
-    if not os.path.isdir(folder_path):
-        print("❌ Folder not found!")
-    else:
-        audio_files = [
-            os.path.join(folder_path, f)
-            for f in os.listdir(folder_path)
-            if f.lower().endswith(SUPPORTED_EXT)
-        ]
+    # Resample if needed
+    if sr != TARGET_SR:
+        wav = torchaudio.transforms.Resample(sr, TARGET_SR)(wav)
 
-        if not audio_files:
-            print("❌ No audio files found.")
-        else:
-            print(f"\n📂 Found {len(audio_files)} audio files")
+    # Run inference
+    with torch.no_grad():
+        text = model(wav, LANG, DECODE_TYPE)
 
-            for audio in audio_files:
-                send_audio(audio)
+    latency_ms = round((time.time() - start_time) * 1000, 2)
 
-else:
-    print("❌ Invalid choice")
+    return text, latency_ms
