@@ -1,94 +1,45 @@
 import time
-import os
-import traceback
-
-import soundfile as sf
+import torch
 import torchaudio
-import numpy as np
+from transformers import AutoModel
 
-from fastapi import HTTPException
+# =========================
+# CONFIG
+# =========================
+MODEL_ID = "ai4bharat/indic-conformer-600m-multilingual"
+LANG = "te"
+DECODE_TYPE = "rnnt"
+TARGET_SR = 16000
 
-# ============================
-# Force stable audio backend
-# ============================
-try:
-    torchaudio.set_audio_backend("soundfile")
-except Exception:
-    pass
+# =========================
+# LOAD MODEL (ONCE)
+# =========================
+model = AutoModel.from_pretrained(
+    MODEL_ID,
+    trust_remote_code=True
+)
+model.eval()
 
-
-def load_audio_safe(audio_path: str):
-    """
-    Robust audio loader for cloud environments.
-    Tries soundfile first, then torchaudio fallback.
-    Returns: waveform (numpy), sample_rate
-    """
-    # ---- Try soundfile (best for cloud) ----
-    try:
-        audio, sr = sf.read(audio_path)
-        if audio.ndim > 1:
-            audio = np.mean(audio, axis=1)  # convert to mono
-        return audio, sr
-    except Exception as sf_err:
-        sf_error = str(sf_err)
-
-    # ---- Fallback to torchaudio ----
-    try:
-        wav, sr = torchaudio.load(audio_path)
-        wav = wav.mean(dim=0).numpy()
-        return wav, sr
-    except Exception as ta_err:
-        raise RuntimeError(
-            f"Audio decode failed.\n"
-            f"soundfile error: {sf_error}\n"
-            f"torchaudio error: {ta_err}"
-        )
-
-
+# =========================
+# TRANSCRIPTION FUNCTION
+# =========================
 def transcribe_audio(audio_path: str):
-    """
-    Main transcription function.
-    Returns:
-    {
-        "text": "...",
-        "latency_ms": 1234.56
-    }
-    """
     start_time = time.time()
 
-    if not os.path.exists(audio_path):
-        raise HTTPException(status_code=400, detail="Audio file not found")
+    # Explicit backend (safer on Linux)
+    wav, sr = torchaudio.load(audio_path, backend="ffmpeg")
 
-    try:
-        # ============================
-        # Load audio safely
-        # ============================
-        audio, sr = load_audio_safe(audio_path)
+    # Convert to mono
+    if wav.shape[0] > 1:
+        wav = wav.mean(dim=0, keepdim=True)
 
-        # ============================
-        # TODO: YOUR ASR MODEL LOGIC
-        # ============================
-        # Replace this block with AI4Bharat / Whisper / any model
-        #
-        # Example placeholder:
-        #
-        # text = model.transcribe(audio, sr)
-        #
-        # --------------------------------
-        text = "DUMMY_TRANSCRIPTION_REPLACE_ME"
-        # --------------------------------
+    # Resample
+    if sr != TARGET_SR:
+        wav = torchaudio.transforms.Resample(sr, TARGET_SR)(wav)
 
-        latency_ms = round((time.time() - start_time) * 1000, 2)
+    with torch.no_grad():
+        text = model(wav, LANG, DECODE_TYPE)
 
-        return {
-            "text": text,
-            "latency_ms": latency_ms
-        }
+    latency_ms = round((time.time() - start_time) * 1000, 2)
 
-    except Exception as e:
-        # ALWAYS return JSON-safe error
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"STT processing failed: {str(e)}"
-        )
+    return text, latency_ms
