@@ -1,18 +1,28 @@
+import os
 import time
+import logging
 import torch
 import torchaudio
 from transformers import AutoModel
 
 # =========================
+# SILENCE ALL LOGS
+# =========================
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("torch").setLevel(logging.ERROR)
+
+# =========================
 # CONFIG
 # =========================
 MODEL_ID = "ai4bharat/indic-conformer-600m-multilingual"
-LANG = "te"
-DECODE_TYPE = "rnnt"
+LANG = "te"              # language code
+DECODE_TYPE = "rnnt"     # or "ctc"
 TARGET_SR = 16000
 
 # =========================
-# LOAD MODEL (ONCE, SILENT)
+# LOAD MODEL (ONCE)
 # =========================
 model = AutoModel.from_pretrained(
     MODEL_ID,
@@ -28,9 +38,11 @@ def transcribe_audio(audio_path: str):
 
     wav, sr = torchaudio.load(audio_path)
 
+    # Convert to mono
     if wav.shape[0] > 1:
         wav = wav.mean(dim=0, keepdim=True)
 
+    # Resample if needed
     if sr != TARGET_SR:
         wav = torchaudio.transforms.Resample(sr, TARGET_SR)(wav)
 
