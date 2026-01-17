@@ -29,6 +29,10 @@ async def stt(
 
         result = transcribe_audio(temp_path)
 
+        # ✅ LOG output for debugging in Uvicorn
+        print("🧠 Transcription result:")
+        print(result)
+
         return {
             "filename": result["filename"],
             "text": result["text"],
