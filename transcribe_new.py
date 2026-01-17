@@ -1,6 +1,8 @@
 import time
 import torch
 import torchaudio
+import os
+from contextlib import redirect_stdout, redirect_stderr
 from transformers import AutoModel
 
 # =========================
@@ -26,7 +28,7 @@ model.eval()
 def transcribe_audio(audio_path: str):
     start_time = time.time()
 
-    # IMPORTANT: explicit backend
+    # Always use ffmpeg backend (VERY IMPORTANT)
     wav, sr = torchaudio.load(audio_path, backend="ffmpeg")
 
     if wav.shape[0] > 1:
@@ -35,9 +37,17 @@ def transcribe_audio(audio_path: str):
     if sr != TARGET_SR:
         wav = torchaudio.transforms.Resample(sr, TARGET_SR)(wav)
 
-    with torch.no_grad():
-        text = model(wav, LANG, DECODE_TYPE)
+    # 🔕 suppress model prints/logs
+    with open(os.devnull, "w") as fnull:
+        with redirect_stdout(fnull), redirect_stderr(fnull):
+            with torch.no_grad():
+                result = model(wav, LANG, DECODE_TYPE)
+
+    # Normalize output
+    if isinstance(result, (list, tuple)):
+        text = result[0]
+    else:
+        text = str(result)
 
     latency_ms = round((time.time() - start_time) * 1000, 2)
-
-    return text, latency_ms
+    return text.strip(), latency_ms
