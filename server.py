@@ -29,23 +29,22 @@ async def stt(
     if authorization != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    # --- Save uploaded audio temporarily ---
     temp_path = f"/tmp/{uuid.uuid4()}_{file.filename}"
 
     try:
+        # Save uploaded file
         with open(temp_path, "wb") as f:
             f.write(await file.read())
 
-        # --- Call inference function (NO script execution) ---
-        text, latency_ms = transcribe_audio(temp_path)
+        # 🔥 transcribe_audio RETURNS A DICT
+        result = transcribe_audio(temp_path)
 
         return {
             "filename": file.filename,
-            "text": text,
-            "latency_ms": latency_ms
+            "text": result["text"],
+            "latency_ms": result["latency_ms"]
         }
 
     finally:
-        # --- Cleanup ---
         if os.path.exists(temp_path):
             os.remove(temp_path)
