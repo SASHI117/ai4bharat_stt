@@ -51,7 +51,6 @@ def transcribe_audio(audio_path: str):
             with torch.no_grad():
                 result = model(wav, LANG, DECODE_TYPE)
 
-    # Clean and extract text
     raw = str(result)
     lines = [l.strip() for l in raw.splitlines() if l.strip()]
     text = lines[-1] if lines else ""
@@ -70,7 +69,6 @@ def transcribe_audio(audio_path: str):
 
     latency_ms = round((time.time() - start_time) * 1000, 2)
 
-    # Return structured result
     return {
         "filename": os.path.basename(audio_path),
         "text": text,
