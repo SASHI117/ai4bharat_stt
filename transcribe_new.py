@@ -7,7 +7,7 @@ from transformers import AutoModel
 from transformers.utils import logging as hf_logging
 
 # =========================
-# HARD DISABLE ALL HF LOGS
+# HARD DISABLE HF LOGS
 # =========================
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
@@ -36,7 +36,7 @@ model.eval()
 def transcribe_audio(audio_path: str):
     start_time = time.time()
 
-    # ALWAYS use ffmpeg
+    # Load audio via ffmpeg
     wav, sr = torchaudio.load(audio_path, backend="ffmpeg")
 
     if wav.shape[0] > 1:
@@ -45,13 +45,15 @@ def transcribe_audio(audio_path: str):
     if sr != TARGET_SR:
         wav = torchaudio.transforms.Resample(sr, TARGET_SR)(wav)
 
-    # FULL stdout/stderr suppression
+    # Suppress ALL stdout/stderr from model
     with open(os.devnull, "w") as fnull:
         with redirect_stdout(fnull), redirect_stderr(fnull):
             with torch.no_grad():
                 result = model(wav, LANG, DECODE_TYPE)
 
-    # 🔴 FORCE CLEAN OUTPUT
+    # =========================
+    # CLEAN RESULT
+    # =========================
     if isinstance(result, (list, tuple)):
         text = result[0]
     elif isinstance(result, dict):
@@ -59,11 +61,27 @@ def transcribe_audio(audio_path: str):
     else:
         text = str(result)
 
+    # Remove known model noise
+    noise_patterns = [
+        "Please check FRAME_DURATION_MS.",
+        "Fetching",
+        "files:",
+        "|",
+        "%",
+    ]
+
+    for n in noise_patterns:
+        text = text.replace(n, "")
+
+    text = text.strip()
+
     latency_ms = round((time.time() - start_time) * 1000, 2)
 
-    # FINAL SANITY CLEAN
-    text = text.strip()
-    text = text.replace("Please check FRAME_DURATION_MS.", "")
-    text = text.replace("Fetching", "").strip()
-
-    return text, latency_ms
+    # =========================
+    # RETURN CLEAN STRUCTURE
+    # =========================
+    return {
+        "filename": os.path.basename(audio_path),
+        "text": text if text else "",
+        "latency_ms": latency_ms
+    }
