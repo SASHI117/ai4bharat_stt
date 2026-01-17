@@ -35,7 +35,7 @@ async def stt(
 
         return {
             "filename": result["filename"],
-            "text": result["text"],
+            "text": result.get("text") or result.get("transcription"),
             "latency_ms": result["latency_ms"]
         }
 
