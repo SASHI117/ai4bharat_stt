@@ -32,15 +32,14 @@ async def stt(
     temp_path = f"/tmp/{uuid.uuid4()}_{file.filename}"
 
     try:
-        # Save uploaded file
         with open(temp_path, "wb") as f:
             f.write(await file.read())
 
-        # 🔥 transcribe_audio RETURNS A DICT
+        # ✅ transcribe_audio RETURNS A DICT
         result = transcribe_audio(temp_path)
 
         return {
-            "filename": file.filename,
+            "filename": result["filename"],
             "text": result["text"],
             "latency_ms": result["latency_ms"]
         }
