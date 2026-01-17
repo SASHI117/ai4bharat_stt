@@ -54,12 +54,9 @@ def transcribe_audio(audio_path: str):
     # =========================
     # CLEAN RESULT
     # =========================
-    if isinstance(result, (list, tuple)):
-        text = result[0]
-    elif isinstance(result, dict):
-        text = result.get("text", "")
-    else:
-        text = str(result)
+    raw = str(result)
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    text = lines[-1] if lines else ""
 
     # Remove known model noise
     noise_patterns = [
