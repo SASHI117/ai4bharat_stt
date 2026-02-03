@@ -16,10 +16,14 @@ app = FastAPI(
 @app.post("/stt")
 async def stt(
     file: UploadFile = File(...),
-    authorization: str = Header(None)
+    authorization: str = Header(None),
+    x_language: str = Header(None)   # ✅ NEW (optional)
 ):
     if authorization != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # ✅ Backward-compatible default
+    lang = x_language.lower() if x_language else "te"
 
     temp_path = f"/tmp/{uuid.uuid4()}_{file.filename}"
 
@@ -27,7 +31,8 @@ async def stt(
         with open(temp_path, "wb") as f:
             f.write(await file.read())
 
-        result = transcribe_audio(temp_path)
+        # ✅ Pass language safely
+        result = transcribe_audio(temp_path, lang)
 
         # ✅ LOG output for debugging in Uvicorn
         print("🧠 Transcription result:")
