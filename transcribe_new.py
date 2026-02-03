@@ -17,7 +17,7 @@ hf_logging.set_verbosity_error()
 # CONFIG
 # =========================
 MODEL_ID = "ai4bharat/indic-conformer-600m-multilingual"
-LANG = "te"
+DEFAULT_LANG = "te"        # ✅ backward-compatible default
 DECODE_TYPE = "rnnt"
 TARGET_SR = 16000
 
@@ -33,7 +33,7 @@ model.eval()
 # =========================
 # TRANSCRIPTION FUNCTION
 # =========================
-def transcribe_audio(audio_path: str):
+def transcribe_audio(audio_path: str, lang: str = DEFAULT_LANG):
     start_time = time.time()
 
     # Load audio via ffmpeg
@@ -49,7 +49,7 @@ def transcribe_audio(audio_path: str):
     with open(os.devnull, "w") as fnull:
         with redirect_stdout(fnull), redirect_stderr(fnull):
             with torch.no_grad():
-                result = model(wav, LANG, DECODE_TYPE)
+                result = model(wav, lang, DECODE_TYPE)
 
     raw = str(result)
     lines = [l.strip() for l in raw.splitlines() if l.strip()]
