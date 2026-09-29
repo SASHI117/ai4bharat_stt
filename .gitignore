@@ -1,21 +1,14 @@
-# Python
 __pycache__/
 *.pyc
-
-# Conda / venv
 .env
-.venv
+.venv/
+venv/
 ai4bharat_asr/
-
-# HuggingFace cache
 .cache/
-**/.cache/
-
-# Audio outputs
+.pytest_cache/
+.ruff_cache/
 *.wav
 *.mp3
 *.flac
-
-# OS
 .DS_Store
 Thumbs.db

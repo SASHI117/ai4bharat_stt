@@ -1,6 +1,15 @@
-fastapi
-uvicorn
-python-multipart
-transformers
-torchaudio
-torch
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+
+# IndicConformer runs as ONNX graphs via trust_remote_code (model_onnx.py),
+# which imports onnxruntime and huggingface_hub.
+transformers>=4.40,<5
+huggingface_hub>=0.23
+onnxruntime>=1.17
+numpy
+
+# torchaudio>=2.9 decodes through torchcodec and ignores backend="ffmpeg";
+# stay on the ffmpeg path (needs the system ffmpeg libraries).
+torch>=2.3,<2.9
+torchaudio>=2.3,<2.9
