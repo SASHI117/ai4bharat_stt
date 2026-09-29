@@ -14,7 +14,7 @@ import transcriber
 logger = logging.getLogger("stt")
 logging.basicConfig(level=logging.INFO)
 
-MAX_UPLOAD_BYTES = int(os.getenv("STT_MAX_UPLOAD_MB", "50")) * 1024 * 1024
+MAX_UPLOAD_BYTES = int(os.getenv("STT_MAX_UPLOAD_MB") or 50) * 1024 * 1024
 
 
 def _api_key() -> str:

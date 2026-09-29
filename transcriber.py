@@ -35,7 +35,7 @@ def get_model():
 
                 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
                 hf_logging.set_verbosity_error()
-                torch.set_num_threads(int(os.getenv("STT_THREADS", os.cpu_count() or 1)))
+                torch.set_num_threads(int(os.getenv("STT_THREADS") or os.cpu_count() or 1))
 
                 # The remote code prints a FRAME_DURATION_MS notice while loading.
                 with open(os.devnull, "w") as null, redirect_stdout(null), redirect_stderr(null):
