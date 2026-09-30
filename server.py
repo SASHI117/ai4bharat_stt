@@ -28,8 +28,9 @@ def _api_key() -> str:
 async def lifespan(_app: FastAPI):
     _api_key()  # fail fast on a misconfigured deployment
     if os.getenv("STT_PRELOAD", "1") == "1":
-        # Load the checkpoint at startup, not on the first user request.
-        await run_in_threadpool(transcriber.get_model)
+        # Load the checkpoint and pay ONNX Runtime's first-run cost at
+        # startup, not on the first user request.
+        await run_in_threadpool(transcriber.warm_up)
     yield
 
 

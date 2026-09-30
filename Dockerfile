@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# ffmpeg: torchaudio decodes mp3/m4a/ogg through it
+# ffmpeg CLI decodes every input format (see transcriber.load_audio)
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 

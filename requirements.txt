@@ -9,7 +9,5 @@ huggingface_hub>=0.23
 onnxruntime>=1.17
 numpy
 
-# torchaudio>=2.9 decodes through torchcodec and ignores backend="ffmpeg";
-# stay on the ffmpeg path (needs the system ffmpeg libraries).
-torch>=2.3,<2.9
-torchaudio>=2.3,<2.9
+# Audio is decoded by the ffmpeg CLI (must be on PATH), so torchaudio is not needed.
+torch>=2.1

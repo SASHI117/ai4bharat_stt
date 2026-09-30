@@ -4,6 +4,7 @@ The model is loaded lazily and once per process: importing this module is
 cheap, so the API and its tests can start without the 600M checkpoint.
 """
 import os
+import subprocess
 import threading
 import time
 from contextlib import redirect_stderr, redirect_stdout
@@ -45,16 +46,40 @@ def get_model():
     return _model
 
 
-def load_audio(audio_path: str):
-    """Decode any ffmpeg-readable file to a mono 16 kHz float tensor [1, T]."""
-    import torchaudio
+def warm_up(lang: str = DEFAULT_LANG) -> None:
+    """Run one inference on a second of silence.
 
-    wav, sr = torchaudio.load(audio_path, backend="ffmpeg")
-    if wav.shape[0] > 1:
-        wav = wav.mean(dim=0, keepdim=True)
-    if sr != TARGET_SR:
-        wav = torchaudio.functional.resample(wav, sr, TARGET_SR)
-    return wav
+    ONNX Runtime's first run is several times slower than steady state;
+    doing it at startup keeps that cost off the first real request.
+    """
+    import torch
+
+    model = get_model()
+    with torch.inference_mode():
+        model(torch.zeros(1, TARGET_SR), lang, DECODE_TYPE)
+
+
+def load_audio(audio_path: str):
+    """Decode any ffmpeg-readable file to a mono 16 kHz float32 array [1, T].
+
+    Calls the ffmpeg CLI directly instead of torchaudio's ffmpeg backend,
+    which only binds FFmpeg 4-6 shared libraries and was dropped in
+    torchaudio 2.9. Any ffmpeg on PATH works.
+    """
+    import numpy as np
+
+    cmd = ["ffmpeg", "-nostdin", "-v", "error", "-i", audio_path,
+           "-ac", "1", "-ar", str(TARGET_SR), "-f", "f32le", "-"]
+    try:
+        out = subprocess.run(cmd, capture_output=True, check=True).stdout
+    except FileNotFoundError as e:
+        raise RuntimeError("ffmpeg not found on PATH") from e
+    except subprocess.CalledProcessError as e:
+        raise ValueError(f"ffmpeg could not decode audio: {e.stderr.decode(errors='replace')[:200]}") from e
+    samples = np.frombuffer(out, dtype=np.float32)
+    if samples.size == 0:
+        raise ValueError("audio contains no samples")
+    return samples.copy()[None, :]
 
 
 def transcribe_audio(audio_path: str, lang: str = DEFAULT_LANG) -> dict:
@@ -63,11 +88,11 @@ def transcribe_audio(audio_path: str, lang: str = DEFAULT_LANG) -> dict:
 
     import torch
 
+    model = get_model()   # load first: latency should measure decoding, not a one-off model load
     start = time.perf_counter()
-    wav = load_audio(audio_path)
+    wav = torch.from_numpy(load_audio(audio_path))
     audio_s = wav.shape[-1] / TARGET_SR
 
-    model = get_model()
     with torch.inference_mode():
         # forward() returns the decoded string directly.
         text = model(wav, lang, DECODE_TYPE)
@@ -93,4 +118,5 @@ if __name__ == "__main__":
     ap.add_argument("audio")
     ap.add_argument("--lang", default=DEFAULT_LANG)
     args = ap.parse_args()
+    warm_up(args.lang)   # so the reported latency is steady-state, as in the server
     print(json.dumps(transcribe_audio(args.audio, args.lang), ensure_ascii=False, indent=2))
