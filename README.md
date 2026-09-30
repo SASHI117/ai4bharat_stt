@@ -6,29 +6,33 @@
 
 A self-hosted speech-to-text API for the **22 scheduled Indian languages**,
 serving AI4Bharat's open [IndicConformer-600M multilingual](https://huggingface.co/ai4bharat/indic-conformer-600m-multilingual)
-model behind FastAPI. I ran it on an Azure CPU VM so the team could compare
-an open, self-hostable model against commercial APIs in
+model behind FastAPI. I deployed it on an Azure VM so an open, self-hostable
+model could be compared against commercial APIs in
 [stt-benchmark-backend](https://github.com/SASHI117/stt-benchmark-backend).
-Field staff sent audio through [users_ai4bharat_stt](https://github.com/SASHI117/users_ai4bharat_stt).
+A command-line client for batch transcription lives in
+[users_ai4bharat_stt](https://github.com/SASHI117/users_ai4bharat_stt).
 
 ```mermaid
 flowchart LR
     C[client / benchmark] -- "POST /stt<br/>Bearer key, X-Language" --> S[FastAPI]
-    S -- tempfile --> T["transcriber.py<br/>ffmpeg decode → mono 16 kHz"]
-    T --> M["IndicConformer (ONNX)<br/>shared encoder + per-language RNNT/CTC head"]
+    S -- tempfile --> T["transcriber.py<br/>ffmpeg CLI → mono 16 kHz float32"]
+    T --> M["IndicConformer (ONNX)<br/>shared encoder → RNNT or CTC decoding<br/>restricted to the chosen language"]
     M --> S
     S -- "text, latency, RTF" --> C
 ```
 
 ## How it works
 
-- **Model.** A Conformer encoder shared across languages, with a separate
-  output head per language (`joint_post_net_<lang>.onnx`). It is distributed
-  as ONNX graphs and loaded through `trust_remote_code`. The language is
-  therefore an *input*, not something the model detects: sending Hindi audio
-  with `X-Language: te` produces Telugu-script garbage.
-- **Decoding.** `rnnt` (default) is more accurate. `ctc` is a single
-  argmax pass and noticeably faster on CPU. Switch with `STT_DECODE`.
+- **Model.** One Conformer encoder is shared by all 22 languages. RNNT
+  decoding uses a separate joint network per language
+  (`joint_post_net_<lang>.onnx`), and CTC decoding masks a shared decoder's
+  output to that language's vocabulary. It is distributed as ONNX graphs and
+  loaded through `trust_remote_code`. The language is therefore an *input*,
+  not something the model detects: audio sent with the wrong `X-Language`
+  is decoded into the wrong language's vocabulary.
+- **Decoding.** `rnnt` is the default. `ctc` is a single argmax pass over
+  the encoder output, cheaper than RNNT's step-by-step decoding loop.
+  Switch with `STT_DECODE`.
 - **Loading.** The ~2.5 GB checkpoint is loaded once, lazily and behind a
   lock. The server preloads it at startup (`STT_PRELOAD=1`) so the first
   request doesn't pay the load time.
@@ -49,6 +53,8 @@ curl -X POST http://localhost:8000/stt \
   -H "Authorization: Bearer $STT_API_KEY" -H "X-Language: hi" \
   -F file=@sample.wav
 ```
+
+Response (values are illustrative):
 
 ```json
 {"filename": "sample.wav", "text": "…", "language": "hi", "decoding": "rnnt",
@@ -93,8 +99,9 @@ works if it can't be sniffed.
 
 - `onnxruntime` and `huggingface_hub` are imported by the model's remote code,
   so they must be installed even though this repo never imports them directly.
-- `torch`/`torchaudio` are pinned below 2.9. From 2.9, `torchaudio.load`
-  decodes through `torchcodec` and ignores `backend="ffmpeg"`.
+- Audio is decoded by calling the `ffmpeg` CLI, so any FFmpeg on `PATH` works.
+  torchaudio's ffmpeg backend only binds FFmpeg 4–6 shared libraries and was
+  removed in torchaudio 2.9, so it is not used.
 
 ## Tests
 
@@ -107,6 +114,27 @@ The tests replace the model with a fake. They cover authentication,
 language defaults and validation, upload limits, temp-file cleanup, and a
 client filename like `../../etc/passwd.mp3` never becoming a path. CI runs
 them without installing torch.
+
+## Verified end to end
+
+On my laptop CPU, using the real checkpoint, I ran the server and called it with the
+[client](https://github.com/SASHI117/users_ai4bharat_stt). The inputs were Google-TTS
+sentences, so the correct transcript was known:
+
+| Input | Output (RNNT and CTC) |
+|---|---|
+| రైతులు ఈ సంవత్సరం వరి పంటను ఎక్కువగా సాగు చేశారు (Telugu, 4.8 s) | identical |
+| किसान भाई इस साल गेहूं की फसल अच्छी हुई है (Hindi, 3.8 s) | किसान भाई इस साल गेहूँ की फ़सल अच्छी हुई है: same words, spelled with chandrabindu and nukta |
+
+- Startup, meaning model load plus warm-up, took about 22 s.
+- Steady-state RTF was about 0.5–0.9 with RNNT on these short clips. On a 60 s clip, RTF was
+  0.86 with RNNT and 0.51 with CTC.
+- The first inference after loading was about 4× slower than steady state (ONNX Runtime
+  initialization). The server therefore warms up at startup, which brought the first
+  request from 11.7 s down to 3.0 s.
+- Wrong language → `400`, wrong key → `401`.
+
+TTS audio is clean, so this verifies the pipeline, not accuracy on field recordings.
 
 ## Limitations
 
