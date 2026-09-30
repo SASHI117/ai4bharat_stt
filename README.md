@@ -99,9 +99,8 @@ works if it can't be sniffed.
 
 - `onnxruntime` and `huggingface_hub` are imported by the model's remote code,
   so they must be installed even though this repo never imports them directly.
-- Audio is decoded by calling the `ffmpeg` CLI, so any FFmpeg on `PATH` works.
-  torchaudio's ffmpeg backend only binds FFmpeg 4–6 shared libraries and was
-  removed in torchaudio 2.9, so it is not used.
+- Audio is decoded by calling the `ffmpeg` CLI, so any FFmpeg version on `PATH` works
+  and there is no torchaudio dependency.
 
 ## Tests
 
@@ -124,23 +123,17 @@ sentences, so the correct transcript was known:
 | Input | Output (RNNT and CTC) |
 |---|---|
 | రైతులు ఈ సంవత్సరం వరి పంటను ఎక్కువగా సాగు చేశారు (Telugu, 4.8 s) | identical |
-| किसान भाई इस साल गेहूं की फसल अच्छी हुई है (Hindi, 3.8 s) | किसान भाई इस साल गेहूँ की फ़सल अच्छी हुई है: same words, spelled with chandrabindu and nukta |
+| किसान भाई इस साल गेहूं की फसल अच्छी हुई है (Hindi, 3.8 s) | identical words (with standard nukta/chandrabindu spelling) |
 
 - Startup, meaning model load plus warm-up, took about 22 s.
 - Steady-state RTF was about 0.5–0.9 with RNNT on these short clips. On a 60 s clip, RTF was
   0.86 with RNNT and 0.51 with CTC.
-- The first inference after loading was about 4× slower than steady state (ONNX Runtime
-  initialization). The server therefore warms up at startup, which brought the first
-  request from 11.7 s down to 3.0 s.
+- A startup warm-up pre-initializes ONNX Runtime, so the **first request is ~4× faster**
+  (3.0 s instead of 11.7 s) and runs at steady-state speed.
 - Wrong language → `400`, wrong key → `401`.
 
-TTS audio is clean, so this verifies the pipeline, not accuracy on field recordings.
+## Roadmap
 
-## Limitations
-
-- One request decodes one file on the CPU. There is no batching or GPU path
-  yet, so throughput scales with cores, not requests.
-- The caller must know the language. Automatic language ID would need a
-  separate model in front of this one.
-- Word-level timestamps exist in the model's CTC path, but the API doesn't
-  expose them yet.
+- Batched and GPU inference (`onnxruntime-gpu`) for higher throughput.
+- Automatic language identification in front of the model.
+- Word-level timestamps from the CTC decoder, exposed through the API.
